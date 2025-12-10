@@ -1,5 +1,5 @@
-from flask import Flask, render_template, request, jsonify
-from flask_cors import CORS
+# -*- coding: utf-8 -*-
+import streamlit as st
 import nltk
 import re
 from nltk.tokenize import word_tokenize
@@ -12,12 +12,10 @@ try:
     nltk.data.find('tokenizers/punkt')
 except LookupError:
     nltk.download('punkt')
-
 try:
     nltk.data.find('corpora/stopwords')
 except LookupError:
     nltk.download('stopwords')
-    
 try:
     nltk.data.find('corpora/wordnet')
 except LookupError:
@@ -32,39 +30,31 @@ class SimpleNLPProcessor:
         text = text.lower()
         text = re.sub(r'[^a-zA-Z\s]', '', text)
         tokens = word_tokenize(text)
-        
         filtered_tokens = []
         for token in tokens:
             if token not in self.stop_words and len(token) > 2:
                 lemmatized = self.lemmatizer.lemmatize(token)
                 filtered_tokens.append(lemmatized)
-        
         return filtered_tokens
     
     def extract_keywords(self, text):
-        # Check for greetings first
         text_lower = text.lower()
         greetings = ['hi', 'hello', 'hey', 'greetings']
-        
         for greeting in greetings:
             if greeting in text_lower:
                 return [greeting]
-        
         return self.preprocess_text(text)
     
     def get_intent_from_keywords(self, keywords, knowledge_base):
         intent_scores = {}
-        
         for category, topics in knowledge_base.items():
             for topic, data in topics.items():
                 topic_keywords = [kw.lower() for kw in data['keywords']]
-                
                 matches = 0
                 for keyword in keywords:
                     for topic_keyword in topic_keywords:
                         if keyword in topic_keyword or topic_keyword in keyword:
                             matches += 1
-                
                 if matches > 0:
                     intent_key = f'{category}_{topic}'
                     intent_scores[intent_key] = {
@@ -73,24 +63,10 @@ class SimpleNLPProcessor:
                         'topic': topic,
                         'data': data
                     }
-        
         if intent_scores:
             best_intent = max(intent_scores.items(), key=lambda x: x[1]['score'])
             return best_intent[1]
-        
         return None
-    
-    def process_query(self, query, knowledge_base):
-        tokens = self.preprocess_text(query)
-        keywords = self.extract_keywords(query)
-        intent = self.get_intent_from_keywords(keywords, knowledge_base)
-        
-        return {
-            'original_query': query,
-            'tokens': tokens,
-            'keywords': keywords,
-            'intent': intent
-        }
 
 class HealthcareChatbot:
     def __init__(self):
@@ -102,111 +78,124 @@ class HealthcareChatbot:
     
     def check_emergency(self, query):
         query_lower = query.lower()
-        for keyword in self.emergency_keywords:
-            if keyword in query_lower:
-                return True
-        return False
+        return any(keyword in query_lower for keyword in self.emergency_keywords)
     
     def check_diagnosis_request(self, query):
         query_lower = query.lower()
-        for keyword in self.diagnosis_keywords:
-            if keyword in query_lower:
-                return True
-        return False
+        return any(keyword in query_lower for keyword in self.diagnosis_keywords)
     
     def check_medication_request(self, query):
         query_lower = query.lower()
-        for keyword in self.medication_keywords:
-            if keyword in query_lower:
-                return True
-        return False
+        return any(keyword in query_lower for keyword in self.medication_keywords)
     
     def process_query(self, query):
-        # Check for emergency
         if self.check_emergency(query):
             return {
-                'response': 'This sounds like a medical emergency. Please call emergency services immediately (911 or your local emergency number).',
+                'response': '🚨 **EMERGENCY ALERT**\n\nThis sounds serious! Please call emergency services immediately (911 or your local emergency number).',
                 'type': 'emergency'
             }
         
-        # Check for diagnosis request
         if self.check_diagnosis_request(query):
             return {
-                'response': 'I cannot provide medical diagnosis. Please consult a qualified healthcare provider for personal medical concerns.',
+                'response': '⚠️ **Medical Advice Notice**\n\nI cannot provide medical diagnosis. Please consult a qualified healthcare provider for personal medical concerns.',
                 'type': 'safety_diagnosis'
             }
         
-        # Check for medication request
         if self.check_medication_request(query):
             return {
-                'response': 'I cannot provide medication advice. Consult your doctor or pharmacist for medication-related questions.',
+                'response': '💊 **Medication Notice**\n\nI cannot provide medication advice. Please consult your doctor or pharmacist for medication-related questions.',
                 'type': 'safety_medication'
             }
         
-        # Process with NLP
-        nlp_result = self.nlp_processor.process_query(query, self.knowledge_base)
+        keywords = self.nlp_processor.extract_keywords(query)
+        intent = self.nlp_processor.get_intent_from_keywords(keywords, self.knowledge_base)
         
-        if nlp_result['intent']:
-            intent_data = nlp_result['intent']
+        if intent:
             return {
-                'response': intent_data['data']['response'],
-                'type': intent_data['topic']
+                'response': intent['data']['response'],
+                'type': intent['topic']
             }
         
-        # Default response
         return {
-            'response': 'I can help with general health questions about fever, cold, headache, diet, exercise, first aid, and stress management. Please ask about these topics.',
+            'response': '👋 **Hi there!**\n\nI\'m your healthcare assistant. I can help with general health information about:\n\n• Fever\n• Cold & Flu\n• Headache\n• Diet & Nutrition\n• Exercise\n• First Aid\n• Stress Management\n\nWhat would you like to know?',
             'type': 'default'
         }
+
+# Initialize session state
+if 'chatbot' not in st.session_state:
+    st.session_state.chatbot = HealthcareChatbot()
+if 'messages' not in st.session_state:
+    st.session_state.messages = []
+
+# Page config
+st.set_page_config(
+    page_title="Healthcare Assistant",
+    page_icon="🫥"
+)
+
+# App title and description
+st.title("🫥 Healthcare Assistant")
+st.markdown("""
+I'm here to provide general health information. I can help with:
+- 🨒 Fever, cold, and headache
+- 🥗 Diet and nutrition
+- 🏃 Exercise and fitness
+- 🫤 First aid
+- 🧘 Stress management
+""")
+
+# Chat interface
+with st.container():
+    # Display chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
     
-    def get_chatbot_info(self):
-        return {
-            'name': 'Healthcare Assistant',
-            'version': '1.0',
-            'capabilities': [
-                'General health information',
-                'Symptom awareness',
-                'First aid guidance',
-                'Preventive health tips'
-            ],
-            'limitations': [
-                'No medical diagnosis',
-                'No medication advice',
-                'Not for emergencies',
-                'Consult healthcare professionals for medical concerns'
-            ]
-        }
-
-# Flask App
-app = Flask(__name__)
-CORS(app)
-
-# Initialize chatbot
-chatbot = HealthcareChatbot()
-
-@app.route('/')
-def home():
-    return render_template('index.html')
-
-@app.route('/chat', methods=['POST'])
-def chat():
-    try:
-        user_message = request.json.get('message', '')
+    # Chat input
+    if prompt := st.chat_input("Ask me about health..."):
+        # Add user message to chat history
+        st.session_state.messages.append({"role": "user", "content": prompt})
         
-        if not user_message:
-            return jsonify({'error': 'No message provided'}), 400
+        # Get bot response
+        response = st.session_state.chatbot.process_query(prompt)
         
-        result = chatbot.process_query(user_message)
-        return jsonify(result)
+        # Add bot response to chat history
+        st.session_state.messages.append({"role": "assistant", "content": response['response']})
+        
+        # Rerun to update the chat
+        st.rerun()
+
+# Sidebar with additional info
+with st.sidebar:
+    st.header("ℹ️ About")
+    st.markdown("""
+    **Healthcare Assistant** provides general health information only.
     
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
+    **Not for emergencies** - Call 911 for medical emergencies.
+    
+    **Not medical advice** - Always consult healthcare professionals.
+    """)
+    
+    st.markdown("---")
+    st.markdown("**Topics I can help with:**")
+    st.markdown("""
+    - 🨒 Fever, Cold, Headache
+    - 🥗 Diet & Nutrition
+    - 🏃 Exercise & Fitness
+    - 🫤 First Aid
+    - 🧘 Stress Management
+    """)
 
-@app.route('/info')
-def info():
-    return jsonify(chatbot.get_chatbot_info())
-
-if __name__ == '__main__':
-    print('Starting Healthcare Chatbot...')
-    print('Open your browser and go to: http://localhost:5000')
-    app.run(debug=True, host='0.0.0.0', port=5000)
+# Add some styling
+st.markdown("""
+<style>
+    .stChatFloatingInputContainer {
+        bottom: 20px;
+    }
+    .stChatMessage {
+        padding: 12px 16px;
+        border-radius: 15px;
+        margin: 8px 0;
+    }
+</style>
+""", unsafe_allow_html=True)
