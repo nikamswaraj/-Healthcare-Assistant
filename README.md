@@ -369,20 +369,6 @@ Clearly states that information is educational and not medical advice.
 
 ---
 
-## 📸 Screenshots
-
-### Home Page
-
-(Add Screenshot Here)
-
-### Chat Interface
-
-(Add Screenshot Here)
-
-### Emergency Alert Example
-
-(Add Screenshot Here)
-
 ---
 
 ## 👨‍💻 Author
